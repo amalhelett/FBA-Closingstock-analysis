@@ -1,233 +1,974 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-  <title>FBA + FC Inventory Merge Dashboard</title>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Inventory Closing Stock Dashboard</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@300;400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root {
+    --bg: #0d0f14;
+    --surface: #151820;
+    --surface2: #1c2030;
+    --border: #252b3a;
+    --border-bright: #2e3650;
+    --text: #e8eaf0;
+    --text-dim: #8891a8;
+    --text-muted: #4a5268;
+    --accent: #4f9eff;
+    --accent-dim: #1a3a6e;
+    --green: #3dd68c;
+    --green-dim: #0e3d25;
+    --amber: #f5a623;
+    --amber-dim: #3d2a06;
+    --red: #ff5f57;
+    --mono: 'IBM Plex Mono', monospace;
+    --sans: 'IBM Plex Sans', sans-serif;
+  }
 
-  <!-- CSV Parser -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
 
-  <!-- Excel Parser -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  body {
+    background: var(--bg);
+    color: var(--text);
+    font-family: var(--sans);
+    font-size: 14px;
+    min-height: 100vh;
+  }
 
-  <style>
-    body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+  /* Header */
+  .header {
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+    padding: 16px 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    position: sticky;
+    top: 0;
+    z-index: 100;
+  }
 
-    .card {
-      display: inline-block;
-      padding: 15px;
-      margin: 10px;
-      background: white;
-      border-radius: 8px;
-      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
-    }
+  .header-left {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
 
-    table {
-      border-collapse: collapse;
-      width: 100%;
-      margin-top: 20px;
-      background: white;
-    }
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--accent);
+    border-radius: 6px;
+    display: flex; align-items: center; justify-content: center;
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 13px;
+    color: #fff;
+    flex-shrink: 0;
+  }
 
-    th, td {
-      border: 1px solid #ddd;
-      padding: 8px;
-      text-align: center;
-    }
+  .header h1 {
+    font-family: var(--mono);
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text);
+  }
 
-    th {
-      background-color: #333;
-      color: white;
-    }
-  </style>
+  .header h1 span {
+    color: var(--accent);
+  }
+
+  .header-meta {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.05em;
+  }
+
+  /* Main layout */
+  .main {
+    max-width: 1400px;
+    margin: 0 auto;
+    padding: 32px;
+  }
+
+  /* Upload zone */
+  .upload-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 28px;
+    margin-bottom: 28px;
+  }
+
+  .upload-section h2 {
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    margin-bottom: 20px;
+  }
+
+  .upload-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 16px;
+  }
+
+  .upload-card {
+    border: 1.5px dashed var(--border-bright);
+    border-radius: 8px;
+    padding: 20px;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .upload-card:hover {
+    border-color: var(--accent);
+    background: rgba(79,158,255,0.04);
+  }
+
+  .upload-card.loaded {
+    border-style: solid;
+    border-color: var(--green);
+    background: rgba(61,214,140,0.04);
+  }
+
+  .upload-card input[type="file"] {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+    width: 100%;
+    height: 100%;
+  }
+
+  .upload-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+  }
+
+  .upload-title {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+    margin-bottom: 4px;
+  }
+
+  .upload-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .upload-status {
+    margin-top: 10px;
+    font-family: var(--mono);
+    font-size: 11px;
+  }
+
+  .upload-status.ok { color: var(--green); }
+  .upload-status.err { color: var(--red); }
+
+  .upload-icon {
+    float: right;
+    font-size: 22px;
+    margin-top: -4px;
+    opacity: 0.4;
+  }
+
+  .upload-card.loaded .upload-icon { opacity: 1; }
+
+  /* Process button */
+  .process-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-top: 20px;
+    gap: 16px;
+  }
+
+  .process-info {
+    font-size: 12px;
+    color: var(--text-muted);
+  }
+
+  .btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 6px;
+    font-family: var(--mono);
+    font-size: 12px;
+    font-weight: 500;
+    letter-spacing: 0.04em;
+    cursor: pointer;
+    border: none;
+    transition: all 0.15s;
+  }
+
+  .btn-primary {
+    background: var(--accent);
+    color: #fff;
+  }
+
+  .btn-primary:hover { background: #6aaeff; }
+  .btn-primary:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+  .btn-outline {
+    background: transparent;
+    border: 1px solid var(--border-bright);
+    color: var(--text-dim);
+  }
+
+  .btn-outline:hover {
+    border-color: var(--accent);
+    color: var(--accent);
+  }
+
+  .btn-outline:disabled { opacity: 0.4; cursor: not-allowed; }
+
+  .btn-green {
+    background: var(--green);
+    color: #0a2018;
+  }
+
+  .btn-green:hover { background: #5ae8a8; }
+  .btn-green:disabled { background: var(--border); color: var(--text-muted); cursor: not-allowed; }
+
+  /* Stats bar */
+  .stats-bar {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 12px;
+    margin-bottom: 24px;
+  }
+
+  .stat-card {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 18px 20px;
+  }
+
+  .stat-label {
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    margin-bottom: 8px;
+  }
+
+  .stat-value {
+    font-family: var(--mono);
+    font-size: 26px;
+    font-weight: 600;
+    line-height: 1;
+  }
+
+  .stat-value.blue { color: var(--accent); }
+  .stat-value.green { color: var(--green); }
+  .stat-value.amber { color: var(--amber); }
+  .stat-value.white { color: var(--text); }
+
+  .stat-sub {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 4px;
+  }
+
+  /* Table section */
+  .table-section {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+  }
+
+  .table-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 24px;
+    border-bottom: 1px solid var(--border);
+  }
+
+  .table-title {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+
+  .table-actions {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+  }
+
+  .search-box {
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 5px;
+    padding: 6px 12px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--text);
+    width: 220px;
+    outline: none;
+    transition: border 0.15s;
+  }
+
+  .search-box:focus {
+    border-color: var(--accent);
+  }
+
+  .search-box::placeholder { color: var(--text-muted); }
+
+  .table-wrap {
+    overflow-x: auto;
+  }
+
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+
+  thead th {
+    background: var(--surface2);
+    padding: 11px 16px;
+    text-align: left;
+    font-family: var(--mono);
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+    user-select: none;
+    cursor: pointer;
+  }
+
+  thead th:hover { color: var(--accent); }
+
+  thead th .sort-icon {
+    display: inline-block;
+    margin-left: 4px;
+    opacity: 0.4;
+    font-size: 9px;
+  }
+
+  thead th.sorted .sort-icon { opacity: 1; color: var(--accent); }
+
+  tbody tr {
+    border-bottom: 1px solid var(--border);
+    transition: background 0.1s;
+  }
+
+  tbody tr:hover { background: rgba(255,255,255,0.025); }
+  tbody tr:last-child { border-bottom: none; }
+
+  tbody td {
+    padding: 11px 16px;
+    vertical-align: middle;
+  }
+
+  .td-num {
+    font-family: var(--mono);
+    font-size: 13px;
+    text-align: right;
+  }
+
+  .td-asin {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    letter-spacing: 0.04em;
+  }
+
+  .td-sku {
+    font-weight: 500;
+    max-width: 220px;
+  }
+
+  .td-date {
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--accent);
+  }
+
+  .val-zero { color: var(--text-muted); }
+  .val-pos { color: var(--text); }
+  .total-row {
+    color: var(--accent);
+    font-weight: 600;
+  }
+
+  .badge-none {
+    font-size: 10px;
+    font-family: var(--mono);
+    background: var(--amber-dim);
+    color: var(--amber);
+    padding: 2px 6px;
+    border-radius: 3px;
+    letter-spacing: 0.04em;
+  }
+
+  /* Totals footer */
+  .totals-row td {
+    background: var(--surface2);
+    border-top: 2px solid var(--border-bright);
+    font-family: var(--mono);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--accent);
+    padding: 13px 16px;
+  }
+
+  /* Empty state */
+  .empty-state {
+    padding: 80px 32px;
+    text-align: center;
+    color: var(--text-muted);
+  }
+
+  .empty-state svg {
+    opacity: 0.15;
+    margin-bottom: 16px;
+  }
+
+  .empty-state p {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: 0.06em;
+  }
+
+  /* Closing date pill */
+  .date-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    background: var(--accent-dim);
+    border: 1px solid var(--accent);
+    border-radius: 20px;
+    padding: 4px 12px;
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--accent);
+  }
+
+  /* Row number */
+  .td-num-row {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--text-muted);
+    width: 40px;
+    text-align: right;
+  }
+
+  @media (max-width: 768px) {
+    .main { padding: 16px; }
+    .upload-grid { grid-template-columns: 1fr; }
+    .stats-bar { grid-template-columns: 1fr 1fr; }
+  }
+</style>
 </head>
 <body>
 
-<h2>FBA + FC Inventory Dashboard</h2>
+<div class="header">
+  <div class="header-left">
+    <div class="logo-mark">IC</div>
+    <h1>Inventory <span>Closing</span> Stock</h1>
+  </div>
+  <div class="header-meta">FC + FBA CONSOLIDATION</div>
+</div>
 
-<label>Upload FBA File:</label>
-<input type="file" id="fbaFile" accept=".csv"><br><br>
+<div class="main">
 
-<label>Upload FC File:</label>
-<input type="file" id="fcFile" accept=".csv,.xlsx"><br><br>
+  <!-- Upload Section -->
+  <div class="upload-section">
+    <h2>📂 Data Sources</h2>
+    <div class="upload-grid">
+      <div class="upload-card" id="fc-card">
+        <input type="file" id="fc-file" accept=".xlsx,.xls" onchange="handleFCUpload(event)">
+        <div class="upload-icon">📦</div>
+        <div class="upload-label">Source 1 · Excel</div>
+        <div class="upload-title">FC Stock File</div>
+        <div class="upload-hint">Columns: SKU, ASIN, FC Stock</div>
+        <div class="upload-status" id="fc-status"></div>
+      </div>
+      <div class="upload-card" id="fba-card">
+        <input type="file" id="fba-file" accept=".csv" onchange="handleFBAUpload(event)">
+        <div class="upload-icon">🏭</div>
+        <div class="upload-label">Source 2 · CSV</div>
+        <div class="upload-title">FBA Inventory Ledger</div>
+        <div class="upload-hint">Amazon Inventory Ledger CSV (Ending Warehouse Balance)</div>
+        <div class="upload-status" id="fba-status"></div>
+      </div>
+    </div>
+    <div class="process-row">
+      <div class="process-info" id="process-info">Upload both files to generate the closing stock report.</div>
+      <div style="display:flex;gap:10px">
+        <button class="btn btn-primary" id="compile-btn" onclick="compileData()" disabled>⚡ Compile Report</button>
+        <button class="btn btn-green" id="download-btn" onclick="downloadExcel()" disabled>⬇ Download Excel</button>
+      </div>
+    </div>
+  </div>
 
-<button onclick="processFiles()">Process Data</button>
-<button onclick="downloadCSV()">Download Merged</button>
+  <!-- Stats Bar -->
+  <div class="stats-bar" id="stats-bar" style="display:none">
+    <div class="stat-card">
+      <div class="stat-label">Closing Date</div>
+      <div class="stat-value blue" id="stat-date">—</div>
+      <div class="stat-sub">Inventory snapshot</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Total SKUs</div>
+      <div class="stat-value white" id="stat-skus">—</div>
+      <div class="stat-sub">Unique ASINs tracked</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">FC Total</div>
+      <div class="stat-value amber" id="stat-fc">—</div>
+      <div class="stat-sub">Fulfillment center units</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">FBA + FC Total</div>
+      <div class="stat-value green" id="stat-total">—</div>
+      <div class="stat-sub">Combined closing stock</div>
+    </div>
+  </div>
 
-<div id="dashboard"></div>
+  <!-- Table Section -->
+  <div class="table-section">
+    <div class="table-header">
+      <div class="table-title">Closing Stock Register</div>
+      <div class="table-actions">
+        <input class="search-box" type="text" id="search-input" placeholder="Search SKU / ASIN..." oninput="filterTable()" style="display:none">
+        <span id="date-display"></span>
+      </div>
+    </div>
+    <div class="table-wrap">
+      <table id="main-table">
+        <thead>
+          <tr>
+            <th class="td-num-row">#</th>
+            <th onclick="sortTable('date')"">Date <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('sku')">SKU Name <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('asin')">ASIN <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('fc')" style="text-align:right">FC Closing Stock <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('fba')" style="text-align:right">FBA Closing Stock <span class="sort-icon">↕</span></th>
+            <th onclick="sortTable('total')" style="text-align:right">Total <span class="sort-icon">↕</span></th>
+          </tr>
+        </thead>
+        <tbody id="table-body">
+          <tr>
+            <td colspan="7">
+              <div class="empty-state">
+                <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h18v4H3zM3 10h18M3 17h18v4H3M3 3v18"/></svg>
+                <p>Upload FC stock (XLSX) and FBA Ledger (CSV) to compile the report</p>
+              </div>
+            </td>
+          </tr>
+        </tbody>
+        <tfoot id="table-foot"></tfoot>
+      </table>
+    </div>
+  </div>
 
-<table>
-  <thead>
-    <tr>
-      <th>SKU</th>
-      <th>ASIN</th>
-      <th>FC Stock</th>
-      <th>FBA Stock</th>
-    </tr>
-  </thead>
-  <tbody id="tableBody"></tbody>
-</table>
+</div>
 
 <script>
+let fcData = null;    // { asin -> { sku, stock } }
+let fbaData = null;   // { asin -> { title, balance, date } }
+let compiledRows = [];
+let sortKey = null;
+let sortAsc = true;
+let filterText = '';
 
-// ✅ ASIN Mapping
-const asinMap = {
-"B0DTNVQ34H": "12x30 HE24 labels",
-"B0DTQ3ZCBH": "15X50 HE24 labels",
-"B0DXKWKBWQ": "65C Label Roll",
-"B0DGF32QRT": "AC1200 Wifi Router",
-"B0CQM5THV3": "BT Sound bar",
-"B0D9T8R3W8": "H01 Label Holder",
-"B0DW8DX2M9": "H30c lite printer",
-"B0CJVGCB4K": "H30c printer (New)",
-"B0FSSL1Q2X": "H30c printer(Old)",
-"B0FKZPDH66": "H30C pro Aiyin",
-"B0DL5PXZ65": "H30c pro old (HE480)",
-"B0CR75SMCQ": "H41",
-"B0CXN44J7J": "H58i mini printer",
-"B0FLV3V1W4": "H65C Lite",
-"B0FZSJRV5F": "H65C Mini Printer (New Blue)",
-"B0FZSCW83R": "H65C Mini Printer (New)",
-"B0CZ99K438": "H80i Autocut Thermal Printer",
-"B0FL2VFCT9": "HE24 Labell Roll (12x50)",
-"B0DDL3TR1L": "HE24 mini printer",
-"B0DW8PCP6D": "Helett 4x6 Thermal Label",
-"B0D9LS2P2F": "Helett HL96 Hair Dryer",
-"B0GDKY6QHN": "Helett infiStick Tv Stick",
-"B0G1YY4MJK": "Helett travelfi 4g Hotspot",
-"B0DLKM4N5G": "Helett Z567 Tyre Inflator"
-};
+// ---- FC Upload (XLSX) ----
+function handleFCUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const wb = XLSX.read(e.target.result, { type: 'array' });
+      const ws = wb.Sheets[wb.SheetNames[0]];
+      const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
 
-let finalData = [];
+      // Find header row (SKU, ASIN, FC Stock)
+      let headerIdx = -1;
+      let colSKU = -1, colASIN = -1, colStock = -1;
+      for (let i = 0; i < Math.min(5, rows.length); i++) {
+        const r = rows[i].map(c => c ? String(c).trim().toUpperCase() : '');
+        if (r.some(c => c.includes('ASIN'))) {
+          headerIdx = i;
+          colSKU = r.findIndex(c => c === 'SKU');
+          colASIN = r.findIndex(c => c.includes('ASIN'));
+          colStock = r.findIndex(c => c.includes('STOCK') || c.includes('FC'));
+          break;
+        }
+      }
 
-function processFiles() {
+      if (headerIdx === -1 || colASIN === -1) throw new Error('Cannot find ASIN column in FC file');
 
-  const fbaFile = document.getElementById("fbaFile").files[0];
-  const fcFile = document.getElementById("fcFile").files[0];
+      fcData = {};
+      for (let i = headerIdx + 1; i < rows.length; i++) {
+        const row = rows[i];
+        if (!row || !row[colASIN]) continue;
+        const asin = String(row[colASIN]).trim();
+        if (!asin || asin.length < 5) continue;
+        const sku = (colSKU >= 0 && row[colSKU]) ? String(row[colSKU]).trim() : null;
+        const stock = (colStock >= 0 && row[colStock] != null) ? Number(row[colStock]) || 0 : 0;
+        fcData[asin] = { sku, stock };
+      }
 
-  if (!fbaFile || !fcFile) {
-    alert("Upload both files!");
+      const count = Object.keys(fcData).length;
+      setUploadStatus('fc', true, `✓ Loaded ${count} FC entries`);
+      checkReadyToCompile();
+    } catch (err) {
+      setUploadStatus('fc', false, `✗ Error: ${err.message}`);
+      fcData = null;
+    }
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// ---- FBA Upload (CSV) ----
+function handleFBAUpload(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const text = e.target.result;
+      const lines = text.split('\n').filter(l => l.trim());
+      if (lines.length < 2) throw new Error('CSV appears empty');
+
+      // Parse header
+      const header = parseCSVLine(lines[0]).map(h => h.trim().toLowerCase());
+      const idxDate = header.findIndex(h => h === 'date');
+      const idxASIN = header.findIndex(h => h === 'asin');
+      const idxTitle = header.findIndex(h => h.includes('title'));
+      const idxDisp = header.findIndex(h => h.includes('disposition'));
+      const idxEnding = header.findIndex(h => h.includes('ending') || h.includes('closing'));
+      const idxMsku = header.findIndex(h => h === 'msku' || h.includes('msku'));
+
+      if (idxASIN === -1 || idxEnding === -1) throw new Error('Cannot find ASIN or Ending Balance column');
+
+      // Gather all dates to find closing date (max)
+      let allDates = [];
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        if (!cols[idxDate]) continue;
+        allDates.push(cols[idxDate].trim());
+      }
+      // Parse dates and find max
+      const parsedDates = allDates.map(d => parseDate(d)).filter(Boolean);
+      if (!parsedDates.length) throw new Error('No valid dates found');
+      const maxDate = new Date(Math.max(...parsedDates.map(d => d.getTime())));
+      const maxDateStr = allDates.find(d => {
+        const pd = parseDate(d);
+        return pd && pd.getTime() === maxDate.getTime();
+      });
+
+      // Filter to closing date + SELLABLE, sum per ASIN
+      fbaData = {};
+      for (let i = 1; i < lines.length; i++) {
+        const cols = parseCSVLine(lines[i]);
+        const date = cols[idxDate] ? cols[idxDate].trim() : '';
+        if (!sameDate(date, maxDateStr)) continue;
+
+        const disp = idxDisp >= 0 ? (cols[idxDisp] || '').trim().toUpperCase() : 'SELLABLE';
+        if (disp !== 'SELLABLE') continue;
+
+        const asin = cols[idxASIN] ? cols[idxASIN].trim() : '';
+        if (!asin) continue;
+
+        const ending = Number(cols[idxEnding]) || 0;
+        const title = (idxTitle >= 0 && cols[idxTitle]) ? cols[idxTitle].trim() : '';
+
+        if (!fbaData[asin]) {
+          fbaData[asin] = { title, balance: 0, date: date };
+        }
+        fbaData[asin].balance += ending;
+        if (!fbaData[asin].title && title) fbaData[asin].title = title;
+      }
+
+      const count = Object.keys(fbaData).length;
+      setUploadStatus('fba', true, `✓ Closing date: ${formatDisplayDate(maxDateStr)} · ${count} ASINs`);
+      checkReadyToCompile();
+    } catch (err) {
+      setUploadStatus('fba', false, `✗ Error: ${err.message}`);
+      fbaData = null;
+    }
+  };
+  reader.readAsText(file);
+}
+
+function parseCSVLine(line) {
+  const result = [];
+  let current = '';
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const ch = line[i];
+    if (ch === '"') {
+      if (inQuotes && line[i+1] === '"') { current += '"'; i++; }
+      else inQuotes = !inQuotes;
+    } else if (ch === ',' && !inQuotes) {
+      result.push(current); current = '';
+    } else {
+      current += ch;
+    }
+  }
+  result.push(current);
+  return result;
+}
+
+function parseDate(str) {
+  if (!str) return null;
+  // MM/DD/YYYY or YYYY-MM-DD
+  const mdy = str.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})$/);
+  if (mdy) return new Date(parseInt(mdy[3]), parseInt(mdy[1])-1, parseInt(mdy[2]));
+  const ymd = str.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (ymd) return new Date(parseInt(ymd[1]), parseInt(ymd[2])-1, parseInt(ymd[3]));
+  return null;
+}
+
+function sameDate(a, b) {
+  if (!a || !b) return false;
+  const da = parseDate(a), db = parseDate(b);
+  if (!da || !db) return a.trim() === b.trim();
+  return da.getTime() === db.getTime();
+}
+
+function formatDisplayDate(str) {
+  const d = parseDate(str);
+  if (!d) return str;
+  return d.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: 'numeric' });
+}
+
+function setUploadStatus(type, ok, msg) {
+  const el = document.getElementById(`${type}-status`);
+  const card = document.getElementById(`${type}-card`);
+  el.textContent = msg;
+  el.className = 'upload-status ' + (ok ? 'ok' : 'err');
+  if (ok) card.classList.add('loaded');
+  else card.classList.remove('loaded');
+}
+
+function checkReadyToCompile() {
+  const btn = document.getElementById('compile-btn');
+  const info = document.getElementById('process-info');
+  if (fcData && fbaData) {
+    btn.disabled = false;
+    info.textContent = 'Both files loaded. Click Compile Report to generate the dashboard.';
+  } else {
+    btn.disabled = true;
+  }
+}
+
+// ---- Compile ----
+function compileData() {
+  if (!fcData || !fbaData) return;
+
+  // Union of all ASINs
+  const allAsins = new Set([...Object.keys(fcData), ...Object.keys(fbaData)]);
+
+  // Determine closing date
+  const firstFBA = Object.values(fbaData)[0];
+  const closingDate = firstFBA ? firstFBA.date : '—';
+
+  compiledRows = [];
+  allAsins.forEach(asin => {
+    const fc = fcData[asin] || null;
+    const fba = fbaData[asin] || null;
+
+    const skuName = fc?.sku || (fba?.title ? truncateTitle(fba.title) : null) || asin;
+    const fcStock = fc ? (fc.stock || 0) : 0;
+    const fbaBalance = fba ? (fba.balance || 0) : 0;
+    const total = fcStock + fbaBalance;
+
+    compiledRows.push({
+      date: closingDate,
+      sku: skuName,
+      asin: asin,
+      isSKUMissing: !fc?.sku && !fba?.title,
+      fc: fcStock,
+      fba: fbaBalance,
+      total: total
+    });
+  });
+
+  // Default sort: total desc
+  compiledRows.sort((a, b) => b.total - a.total);
+
+  renderTable(compiledRows);
+  renderStats(closingDate);
+  document.getElementById('search-input').style.display = '';
+  document.getElementById('stats-bar').style.display = '';
+  document.getElementById('download-btn').disabled = false;
+  document.getElementById('process-info').textContent = `Report compiled. ${compiledRows.length} entries across ${allAsins.size} unique ASINs.`;
+}
+
+function truncateTitle(title, max = 40) {
+  if (!title) return null;
+  return title.length > max ? title.substring(0, max) + '…' : title;
+}
+
+function renderStats(closingDate) {
+  document.getElementById('stat-date').textContent = formatDisplayDate(closingDate);
+  document.getElementById('stat-skus').textContent = compiledRows.length;
+  document.getElementById('stat-fc').textContent = compiledRows.reduce((s, r) => s + r.fc, 0).toLocaleString('en-IN');
+  document.getElementById('stat-total').textContent = compiledRows.reduce((s, r) => s + r.total, 0).toLocaleString('en-IN');
+
+  const dateDisp = document.getElementById('date-display');
+  dateDisp.innerHTML = `<span class="date-pill">📅 ${formatDisplayDate(closingDate)}</span>`;
+}
+
+function renderTable(rows) {
+  const tbody = document.getElementById('table-body');
+  const tfoot = document.getElementById('table-foot');
+
+  if (!rows.length) {
+    tbody.innerHTML = `<tr><td colspan="7"><div class="empty-state"><p>No matching entries found.</p></div></td></tr>`;
+    tfoot.innerHTML = '';
     return;
   }
 
-  // STEP 1: Parse FBA
-  Papa.parse(fbaFile, {
-    header: true,
-    skipEmptyLines: true,
-    complete: function(fbaResults) {
+  let html = '';
+  rows.forEach((r, i) => {
+    const skuCell = r.isSKUMissing
+      ? `<span class="td-asin">${r.asin}</span>`
+      : `${escHtml(r.sku)}`;
 
-      const fbaData = fbaResults.data;
+    html += `<tr>
+      <td class="td-num-row">${i+1}</td>
+      <td class="td-date">${formatDisplayDate(r.date)}</td>
+      <td class="td-sku">${skuCell}</td>
+      <td class="td-asin">${r.asin}</td>
+      <td class="td-num ${r.fc === 0 ? 'val-zero' : 'val-pos'}">${r.fc.toLocaleString('en-IN')}</td>
+      <td class="td-num ${r.fba === 0 ? 'val-zero' : 'val-pos'}">${r.fba.toLocaleString('en-IN')}</td>
+      <td class="td-num total-row">${r.total.toLocaleString('en-IN')}</td>
+    </tr>`;
+  });
+  tbody.innerHTML = html;
 
-      const latestDate = fbaData
-        .map(r => r["Date"])
-        .sort((a,b) => new Date(b) - new Date(a))[0];
+  const sumFC = rows.reduce((s,r)=>s+r.fc,0);
+  const sumFBA = rows.reduce((s,r)=>s+r.fba,0);
+  const sumTotal = rows.reduce((s,r)=>s+r.total,0);
+  tfoot.innerHTML = `<tr class="totals-row">
+    <td></td>
+    <td></td>
+    <td style="font-family:var(--mono);font-size:11px;letter-spacing:.08em;color:var(--text-muted)">TOTAL (${rows.length} entries)</td>
+    <td></td>
+    <td class="td-num">${sumFC.toLocaleString('en-IN')}</td>
+    <td class="td-num">${sumFBA.toLocaleString('en-IN')}</td>
+    <td class="td-num">${sumTotal.toLocaleString('en-IN')}</td>
+  </tr>`;
+}
 
-      const fbaFiltered = fbaData.filter(r => r["Date"] === latestDate);
+function escHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
 
-      const fbaGrouped = {};
+// ---- Filter ----
+function filterTable() {
+  filterText = document.getElementById('search-input').value.toLowerCase();
+  applyFilterAndSort();
+}
 
-      fbaFiltered.forEach(row => {
-        const asin = row["ASIN"];
-        const stock = parseFloat(row["Ending Warehouse Balance"]) || 0;
+function applyFilterAndSort() {
+  let rows = [...compiledRows];
+  if (filterText) {
+    rows = rows.filter(r =>
+      r.sku.toLowerCase().includes(filterText) ||
+      r.asin.toLowerCase().includes(filterText)
+    );
+  }
+  if (sortKey) {
+    rows.sort((a, b) => {
+      let va = a[sortKey], vb = b[sortKey];
+      if (typeof va === 'string') va = va.toLowerCase();
+      if (typeof vb === 'string') vb = vb.toLowerCase();
+      if (va < vb) return sortAsc ? -1 : 1;
+      if (va > vb) return sortAsc ? 1 : -1;
+      return 0;
+    });
+  }
+  renderTable(rows);
+}
 
-        if (!fbaGrouped[asin]) fbaGrouped[asin] = 0;
-        fbaGrouped[asin] += stock;
-      });
+// ---- Sort ----
+function sortTable(key) {
+  if (sortKey === key) sortAsc = !sortAsc;
+  else { sortKey = key; sortAsc = true; }
 
-      // STEP 2: Parse FC (Excel)
-      const reader = new FileReader();
-
-      reader.onload = function(e) {
-        const data = new Uint8Array(e.target.result);
-        const workbook = XLSX.read(data, { type: 'array' });
-
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
-        const fcData = XLSX.utils.sheet_to_json(sheet);
-
-        const fcGrouped = {};
-
-        fcData.forEach(row => {
-
-          const asin = row["ASIN"] || row["asin"];
-          const stock = parseFloat(row["Closing Stock"] || row["Stock"]) || 0;
-
-          if (!asin) return;
-
-          if (!fcGrouped[asin]) fcGrouped[asin] = 0;
-          fcGrouped[asin] += stock;
-        });
-
-        // STEP 3: Merge
-        const allAsins = new Set([
-          ...Object.keys(fbaGrouped),
-          ...Object.keys(fcGrouped)
-        ]);
-
-        finalData = [];
-
-        allAsins.forEach(asin => {
-          finalData.push({
-            asin: asin,
-            sku: asinMap[asin] || "-",
-            fba: fbaGrouped[asin] || 0,
-            fc: fcGrouped[asin] || 0
-          });
-        });
-
-        renderTable(finalData);
-        renderDashboard(finalData);
-      };
-
-      reader.readAsArrayBuffer(fcFile);
+  document.querySelectorAll('thead th').forEach(th => th.classList.remove('sorted'));
+  const keyMap = { date: 0, sku: 1, asin: 2, fc: 3, fba: 4, total: 5 };
+  const headers = document.querySelectorAll('thead th');
+  const keyList = ['date', 'sku', 'asin', 'fc', 'fba', 'total'];
+  const idx = keyList.indexOf(key);
+  if (idx >= 0) {
+    const th = document.querySelectorAll('thead th')[idx + 1];
+    if (th) {
+      th.classList.add('sorted');
+      th.querySelector('.sort-icon').textContent = sortAsc ? '↑' : '↓';
     }
+  }
+  applyFilterAndSort();
+}
+
+// ---- Download Excel ----
+function downloadExcel() {
+  if (!compiledRows.length) return;
+
+  const closingDate = compiledRows[0]?.date || '';
+  const dateFormatted = formatDisplayDate(closingDate).replace(/ /g, '_');
+
+  const wsData = [
+    ['Date', 'SKU Name', 'ASIN', 'FC Closing Stock', 'FBA Closing Stock', 'Total Stock']
+  ];
+  compiledRows.forEach(r => {
+    wsData.push([
+      formatDisplayDate(r.date),
+      r.sku,
+      r.asin,
+      r.fc,
+      r.fba,
+      r.total
+    ]);
   });
+  // Totals row
+  const sumFC = compiledRows.reduce((s,r)=>s+r.fc,0);
+  const sumFBA = compiledRows.reduce((s,r)=>s+r.fba,0);
+  const sumTotal = compiledRows.reduce((s,r)=>s+r.total,0);
+  wsData.push(['TOTAL', '', '', sumFC, sumFBA, sumTotal]);
+
+  const wb = XLSX.utils.book_new();
+  const ws = XLSX.utils.aoa_to_sheet(wsData);
+
+  // Column widths
+  ws['!cols'] = [
+    { wch: 14 }, { wch: 40 }, { wch: 14 }, { wch: 20 }, { wch: 20 }, { wch: 14 }
+  ];
+
+  XLSX.utils.book_append_sheet(wb, ws, 'Closing Stock');
+  XLSX.writeFile(wb, `All_Inventory_Closing_Stock_${dateFormatted}.xlsx`);
 }
-
-// 📊 Table
-function renderTable(data) {
-  const tbody = document.getElementById("tableBody");
-  tbody.innerHTML = "";
-
-  data.forEach(row => {
-    tbody.innerHTML += `
-      <tr>
-        <td>${row.sku}</td>
-        <td>${row.asin}</td>
-        <td>${row.fc}</td>
-        <td>${row.fba}</td>
-      </tr>
-    `;
-  });
-}
-
-// 📈 Dashboard
-function renderDashboard(data) {
-  const totalFC = data.reduce((s, r) => s + r.fc, 0);
-  const totalFBA = data.reduce((s, r) => s + r.fba, 0);
-
-  document.getElementById("dashboard").innerHTML = `
-    <div class="card">Total FC Stock: <b>${totalFC}</b></div>
-    <div class="card">Total FBA Stock: <b>${totalFBA}</b></div>
-  `;
-}
-
-// ⬇️ Download
-function downloadCSV() {
-  let csv = "SKU,ASIN,FC Stock,FBA Stock\n";
-
-  finalData.forEach(row => {
-    csv += `${row.sku},${row.asin},${row.fc},${row.fba}\n`;
-  });
-
-  const blob = new Blob([csv], { type: "text/csv" });
-  const url = URL.createObjectURL(blob);
-
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = "merged_inventory.csv";
-  a.click();
-}
-
 </script>
-
 </body>
 </html>
