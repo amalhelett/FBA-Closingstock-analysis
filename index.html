@@ -5,6 +5,8 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <style>
     body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+    h2 { margin-bottom: 10px; }
+
     .card {
       display: inline-block;
       padding: 15px;
@@ -13,29 +15,38 @@
       border-radius: 8px;
       box-shadow: 0 2px 5px rgba(0,0,0,0.1);
     }
+
     table {
       border-collapse: collapse;
       width: 100%;
       margin-top: 20px;
       background: white;
     }
+
     th, td {
       border: 1px solid #ddd;
       padding: 8px;
       text-align: center;
     }
+
     th {
       background-color: #333;
       color: white;
+    }
+
+    button {
+      padding: 10px 15px;
+      margin-top: 10px;
+      cursor: pointer;
     }
   </style>
 </head>
 <body>
 
-<h2>Amazon Inventory Dashboard (Standardized SKU)</h2>
+<h2>Amazon Inventory Closing Stock Dashboard</h2>
 
 <input type="file" id="fileInput" accept=".csv" />
-<br><br>
+<br>
 <button onclick="downloadCSV()">Download Result</button>
 
 <div id="dashboard"></div>
@@ -53,7 +64,7 @@
 
 <script>
 
-// 🔥 ASIN → SKU Mapping
+// ✅ ASIN → SKU Mapping
 const asinMap = {
 "B0DTNVQ34H": "12x30 HE24 labels",
 "B0DTQ3ZCBH": "15X50 HE24 labels",
@@ -95,6 +106,7 @@ const asinMap = {
 
 let finalData = [];
 
+// 📂 File Upload
 document.getElementById('fileInput').addEventListener('change', function(event) {
     const file = event.target.files[0];
 
@@ -104,20 +116,21 @@ document.getElementById('fileInput').addEventListener('change', function(event) 
         complete: function(results) {
             const data = results.data;
 
+            // 📅 Get latest date (month-end)
             const latestDate = data
               .map(r => r["Date"])
               .sort((a,b) => new Date(b) - new Date(a))[0];
 
+            // Filter latest date
             const filtered = data.filter(r => r["Date"] === latestDate);
 
             const grouped = {};
 
             filtered.forEach(row => {
                 const asin = row["ASIN"];
-                const originalName = row["Product Name"] || "Unknown";
 
-                // 🔥 Replace with mapped SKU
-                const skuName = asinMap[asin] || originalName;
+                // ✅ FIX: Only mapped SKU or "-"
+                const skuName = asinMap[asin] || "-";
 
                 const stock = parseFloat(row["Ending Warehouse Balance"]) || 0;
 
@@ -140,13 +153,16 @@ document.getElementById('fileInput').addEventListener('change', function(event) 
     });
 });
 
+// 📊 Table
 function renderTable(data) {
     const tbody = document.getElementById("tableBody");
     tbody.innerHTML = "";
 
     data.forEach(row => {
+        const highlight = row.sku === "-" ? "#ffe6e6" : "white";
+
         tbody.innerHTML += `
-            <tr>
+            <tr style="background:${highlight}">
                 <td>${row.sku}</td>
                 <td>${row.asin}</td>
                 <td>${row.stock}</td>
@@ -155,6 +171,7 @@ function renderTable(data) {
     });
 }
 
+// 📈 Dashboard
 function renderDashboard(data) {
     const totalStock = data.reduce((sum, item) => sum + item.stock, 0);
 
@@ -164,7 +181,13 @@ function renderDashboard(data) {
     `;
 }
 
+// ⬇️ Download CSV
 function downloadCSV() {
+    if (finalData.length === 0) {
+        alert("No data to download!");
+        return;
+    }
+
     let csv = "SKU Name,ASIN,Closing Stock\n";
 
     finalData.forEach(row => {
