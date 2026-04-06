@@ -5,7 +5,6 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
   <style>
     body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-    h2 { margin-bottom: 10px; }
     .card {
       display: inline-block;
       padding: 15px;
@@ -29,24 +28,19 @@
       background-color: #333;
       color: white;
     }
-    button {
-      padding: 10px 15px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
 
-<h2>Amazon Inventory Closing Stock Dashboard</h2>
+<h2>Amazon Inventory Dashboard (Standardized SKU)</h2>
 
 <input type="file" id="fileInput" accept=".csv" />
-<br>
+<br><br>
 <button onclick="downloadCSV()">Download Result</button>
 
 <div id="dashboard"></div>
 
-<table id="outputTable">
+<table>
   <thead>
     <tr>
       <th>SKU Name</th>
@@ -54,10 +48,51 @@
       <th>Closing Stock</th>
     </tr>
   </thead>
-  <tbody></tbody>
+  <tbody id="tableBody"></tbody>
 </table>
 
 <script>
+
+// 🔥 ASIN → SKU Mapping
+const asinMap = {
+"B0DTNVQ34H": "12x30 HE24 labels",
+"B0DTQ3ZCBH": "15X50 HE24 labels",
+"B0DXKWKBWQ": "65C Label Roll",
+"B0DGF32QRT": "AC1200 Wifi Router",
+"B0CQM5THV3": "BT Sound bar",
+"B0D9T8R3W8": "H01 Label Holder",
+"B0DW8DX2M9": "H30c lite printer",
+"B0CJVGCB4K": "H30c printer (New)",
+"B0FSSL1Q2X": "H30c printer(Old)",
+"B0FKZPDH66": "H30C pro Aiyin",
+"B0DL5PXZ65": "H30c pro old (HE480)",
+"B0CR75SMCQ": "H41",
+"B0CXN44J7J": "H58i mini printer",
+"B0FLV3V1W4": "H65C Lite",
+"B0FZSJRV5F": "H65C Mini Printer (New Blue)",
+"B0FZSCW83R": "H65C Mini Printer (New)",
+"B0CZ99K438": "H80i Autocut Thermal Printer",
+"B0FL2VFCT9": "HE24 Labell Roll (12x50)",
+"B0DDL3TR1L": "HE24 mini printer",
+"B0DW8PCP6D": "Helett 4x6 Thermal Label",
+"B0D9LS2P2F": "Helett HL96 Hair Dryer",
+"B0GDKY6QHN": "Helett infiStick Tv Stick",
+"B0G1YY4MJK": "Helett travelfi 4g Hotspot",
+"B0DLKM4N5G": "Helett Z567 Tyre Inflator",
+"B0FGCT1MWB": "HT15 wired desktop scanner",
+"B0F8QKDJN3": "HT15E",
+"B0CPDPTHVN": "HT20 barcode",
+"B0DPCRLRNJ": "HT20 Pro barcode",
+"B0CBXG8CLB": "HT210 Door lock",
+"B0CRB2KDC6": "HT320 Smart lock",
+"B0CBC9G7W2": "HT410 barcode (BLUE)",
+"B0C72FSCFM": "U19 wireless Training Mic",
+"B0BLV54ZQK": "UY 14 wireless mic",
+"B0C8JRN652": "Uy 16 wireless mic",
+"B0DBCW1PS4": "UY720 door lock",
+"B0GPCQ9KLN": "HLT550 Video Monitor"
+};
+
 let finalData = [];
 
 document.getElementById('fileInput').addEventListener('change', function(event) {
@@ -69,31 +104,32 @@ document.getElementById('fileInput').addEventListener('change', function(event) 
         complete: function(results) {
             const data = results.data;
 
-            // STEP 1: Get latest date
             const latestDate = data
-              .map(row => row["Date"])
+              .map(r => r["Date"])
               .sort((a,b) => new Date(b) - new Date(a))[0];
 
-            // STEP 2: Filter latest date
-            const filtered = data.filter(row => row["Date"] === latestDate);
+            const filtered = data.filter(r => r["Date"] === latestDate);
 
-            // STEP 3: Group by ASIN
             const grouped = {};
 
             filtered.forEach(row => {
                 const asin = row["ASIN"];
-                const sku = row["Product Name"] || "N/A";
-                const balance = parseFloat(row["Ending Warehouse Balance"]) || 0;
+                const originalName = row["Product Name"] || "Unknown";
+
+                // 🔥 Replace with mapped SKU
+                const skuName = asinMap[asin] || originalName;
+
+                const stock = parseFloat(row["Ending Warehouse Balance"]) || 0;
 
                 if (!grouped[asin]) {
                     grouped[asin] = {
-                        sku: sku,
+                        sku: skuName,
                         asin: asin,
                         stock: 0
                     };
                 }
 
-                grouped[asin].stock += balance;
+                grouped[asin].stock += stock;
             });
 
             finalData = Object.values(grouped);
@@ -105,36 +141,30 @@ document.getElementById('fileInput').addEventListener('change', function(event) 
 });
 
 function renderTable(data) {
-    const tbody = document.querySelector("#outputTable tbody");
+    const tbody = document.getElementById("tableBody");
     tbody.innerHTML = "";
 
     data.forEach(row => {
-        const tr = document.createElement("tr");
-        tr.innerHTML = `
-            <td>${row.sku}</td>
-            <td>${row.asin}</td>
-            <td>${row.stock}</td>
+        tbody.innerHTML += `
+            <tr>
+                <td>${row.sku}</td>
+                <td>${row.asin}</td>
+                <td>${row.stock}</td>
+            </tr>
         `;
-        tbody.appendChild(tr);
     });
 }
 
 function renderDashboard(data) {
-    const totalSKUs = data.length;
     const totalStock = data.reduce((sum, item) => sum + item.stock, 0);
 
     document.getElementById("dashboard").innerHTML = `
-        <div class="card">Total SKUs: <b>${totalSKUs}</b></div>
+        <div class="card">Total SKUs: <b>${data.length}</b></div>
         <div class="card">Total Stock: <b>${totalStock}</b></div>
     `;
 }
 
 function downloadCSV() {
-    if (finalData.length === 0) {
-        alert("No data to download!");
-        return;
-    }
-
     let csv = "SKU Name,ASIN,Closing Stock\n";
 
     finalData.forEach(row => {
@@ -142,11 +172,11 @@ function downloadCSV() {
     });
 
     const blob = new Blob([csv], { type: "text/csv" });
-    const url = window.URL.createObjectURL(blob);
+    const url = URL.createObjectURL(blob);
 
     const a = document.createElement("a");
     a.href = url;
-    a.download = "closing_stock.csv";
+    a.download = "closing_stock_cleaned.csv";
     a.click();
 }
 </script>
