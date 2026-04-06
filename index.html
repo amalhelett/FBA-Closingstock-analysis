@@ -1,11 +1,16 @@
 <!DOCTYPE html>
 <html>
 <head>
-  <title>Amazon Inventory Dashboard</title>
+  <title>FBA + FC Inventory Merge Dashboard</title>
+
+  <!-- CSV Parser -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+
+  <!-- Excel Parser -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+
   <style>
     body { font-family: Arial; padding: 20px; background: #f5f5f5; }
-    h2 { margin-bottom: 10px; }
 
     .card {
       display: inline-block;
@@ -33,30 +38,30 @@
       background-color: #333;
       color: white;
     }
-
-    button {
-      padding: 10px 15px;
-      margin-top: 10px;
-      cursor: pointer;
-    }
   </style>
 </head>
 <body>
 
-<h2>Amazon Inventory Closing Stock Dashboard</h2>
+<h2>FBA + FC Inventory Dashboard</h2>
 
-<input type="file" id="fileInput" accept=".csv" />
-<br>
-<button onclick="downloadCSV()">Download Result</button>
+<label>Upload FBA File:</label>
+<input type="file" id="fbaFile" accept=".csv"><br><br>
+
+<label>Upload FC File:</label>
+<input type="file" id="fcFile" accept=".csv,.xlsx"><br><br>
+
+<button onclick="processFiles()">Process Data</button>
+<button onclick="downloadCSV()">Download Merged</button>
 
 <div id="dashboard"></div>
 
 <table>
   <thead>
     <tr>
-      <th>SKU Name</th>
+      <th>SKU</th>
       <th>ASIN</th>
-      <th>Closing Stock</th>
+      <th>FC Stock</th>
+      <th>FBA Stock</th>
     </tr>
   </thead>
   <tbody id="tableBody"></tbody>
@@ -64,7 +69,7 @@
 
 <script>
 
-// ✅ ASIN → SKU Mapping
+// ✅ ASIN Mapping
 const asinMap = {
 "B0DTNVQ34H": "12x30 HE24 labels",
 "B0DTQ3ZCBH": "15X50 HE24 labels",
@@ -89,119 +94,139 @@ const asinMap = {
 "B0D9LS2P2F": "Helett HL96 Hair Dryer",
 "B0GDKY6QHN": "Helett infiStick Tv Stick",
 "B0G1YY4MJK": "Helett travelfi 4g Hotspot",
-"B0DLKM4N5G": "Helett Z567 Tyre Inflator",
-"B0FGCT1MWB": "HT15 wired desktop scanner",
-"B0F8QKDJN3": "HT15E",
-"B0CPDPTHVN": "HT20 barcode",
-"B0DPCRLRNJ": "HT20 Pro barcode",
-"B0CBXG8CLB": "HT210 Door lock",
-"B0CRB2KDC6": "HT320 Smart lock",
-"B0CBC9G7W2": "HT410 barcode (BLUE)",
-"B0C72FSCFM": "U19 wireless Training Mic",
-"B0BLV54ZQK": "UY 14 wireless mic",
-"B0C8JRN652": "Uy 16 wireless mic",
-"B0DBCW1PS4": "UY720 door lock",
-"B0GPCQ9KLN": "HLT550 Video Monitor"
+"B0DLKM4N5G": "Helett Z567 Tyre Inflator"
 };
 
 let finalData = [];
 
-// 📂 File Upload
-document.getElementById('fileInput').addEventListener('change', function(event) {
-    const file = event.target.files[0];
+function processFiles() {
 
-    Papa.parse(file, {
-        header: true,
-        skipEmptyLines: true,
-        complete: function(results) {
-            const data = results.data;
+  const fbaFile = document.getElementById("fbaFile").files[0];
+  const fcFile = document.getElementById("fcFile").files[0];
 
-            // 📅 Get latest date (month-end)
-            const latestDate = data
-              .map(r => r["Date"])
-              .sort((a,b) => new Date(b) - new Date(a))[0];
+  if (!fbaFile || !fcFile) {
+    alert("Upload both files!");
+    return;
+  }
 
-            // Filter latest date
-            const filtered = data.filter(r => r["Date"] === latestDate);
+  // STEP 1: Parse FBA
+  Papa.parse(fbaFile, {
+    header: true,
+    skipEmptyLines: true,
+    complete: function(fbaResults) {
 
-            const grouped = {};
+      const fbaData = fbaResults.data;
 
-            filtered.forEach(row => {
-                const asin = row["ASIN"];
+      const latestDate = fbaData
+        .map(r => r["Date"])
+        .sort((a,b) => new Date(b) - new Date(a))[0];
 
-                // ✅ FIX: Only mapped SKU or "-"
-                const skuName = asinMap[asin] || "-";
+      const fbaFiltered = fbaData.filter(r => r["Date"] === latestDate);
 
-                const stock = parseFloat(row["Ending Warehouse Balance"]) || 0;
+      const fbaGrouped = {};
 
-                if (!grouped[asin]) {
-                    grouped[asin] = {
-                        sku: skuName,
-                        asin: asin,
-                        stock: 0
-                    };
-                }
+      fbaFiltered.forEach(row => {
+        const asin = row["ASIN"];
+        const stock = parseFloat(row["Ending Warehouse Balance"]) || 0;
 
-                grouped[asin].stock += stock;
-            });
+        if (!fbaGrouped[asin]) fbaGrouped[asin] = 0;
+        fbaGrouped[asin] += stock;
+      });
 
-            finalData = Object.values(grouped);
+      // STEP 2: Parse FC (Excel)
+      const reader = new FileReader();
 
-            renderTable(finalData);
-            renderDashboard(finalData);
-        }
-    });
-});
+      reader.onload = function(e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const fcData = XLSX.utils.sheet_to_json(sheet);
+
+        const fcGrouped = {};
+
+        fcData.forEach(row => {
+
+          const asin = row["ASIN"] || row["asin"];
+          const stock = parseFloat(row["Closing Stock"] || row["Stock"]) || 0;
+
+          if (!asin) return;
+
+          if (!fcGrouped[asin]) fcGrouped[asin] = 0;
+          fcGrouped[asin] += stock;
+        });
+
+        // STEP 3: Merge
+        const allAsins = new Set([
+          ...Object.keys(fbaGrouped),
+          ...Object.keys(fcGrouped)
+        ]);
+
+        finalData = [];
+
+        allAsins.forEach(asin => {
+          finalData.push({
+            asin: asin,
+            sku: asinMap[asin] || "-",
+            fba: fbaGrouped[asin] || 0,
+            fc: fcGrouped[asin] || 0
+          });
+        });
+
+        renderTable(finalData);
+        renderDashboard(finalData);
+      };
+
+      reader.readAsArrayBuffer(fcFile);
+    }
+  });
+}
 
 // 📊 Table
 function renderTable(data) {
-    const tbody = document.getElementById("tableBody");
-    tbody.innerHTML = "";
+  const tbody = document.getElementById("tableBody");
+  tbody.innerHTML = "";
 
-    data.forEach(row => {
-        const highlight = row.sku === "-" ? "#ffe6e6" : "white";
-
-        tbody.innerHTML += `
-            <tr style="background:${highlight}">
-                <td>${row.sku}</td>
-                <td>${row.asin}</td>
-                <td>${row.stock}</td>
-            </tr>
-        `;
-    });
+  data.forEach(row => {
+    tbody.innerHTML += `
+      <tr>
+        <td>${row.sku}</td>
+        <td>${row.asin}</td>
+        <td>${row.fc}</td>
+        <td>${row.fba}</td>
+      </tr>
+    `;
+  });
 }
 
 // 📈 Dashboard
 function renderDashboard(data) {
-    const totalStock = data.reduce((sum, item) => sum + item.stock, 0);
+  const totalFC = data.reduce((s, r) => s + r.fc, 0);
+  const totalFBA = data.reduce((s, r) => s + r.fba, 0);
 
-    document.getElementById("dashboard").innerHTML = `
-        <div class="card">Total SKUs: <b>${data.length}</b></div>
-        <div class="card">Total Stock: <b>${totalStock}</b></div>
-    `;
+  document.getElementById("dashboard").innerHTML = `
+    <div class="card">Total FC Stock: <b>${totalFC}</b></div>
+    <div class="card">Total FBA Stock: <b>${totalFBA}</b></div>
+  `;
 }
 
-// ⬇️ Download CSV
+// ⬇️ Download
 function downloadCSV() {
-    if (finalData.length === 0) {
-        alert("No data to download!");
-        return;
-    }
+  let csv = "SKU,ASIN,FC Stock,FBA Stock\n";
 
-    let csv = "SKU Name,ASIN,Closing Stock\n";
+  finalData.forEach(row => {
+    csv += `${row.sku},${row.asin},${row.fc},${row.fba}\n`;
+  });
 
-    finalData.forEach(row => {
-        csv += `${row.sku},${row.asin},${row.stock}\n`;
-    });
+  const blob = new Blob([csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
 
-    const blob = new Blob([csv], { type: "text/csv" });
-    const url = URL.createObjectURL(blob);
-
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = "closing_stock_cleaned.csv";
-    a.click();
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = "merged_inventory.csv";
+  a.click();
 }
+
 </script>
 
 </body>
