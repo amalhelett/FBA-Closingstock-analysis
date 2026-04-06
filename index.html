@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Amazon Inventory Dashboard</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f5f5f5; }
+    h2 { margin-bottom: 10px; }
+    .card {
+      display: inline-block;
+      padding: 15px;
+      margin: 10px;
+      background: white;
+      border-radius: 8px;
+      box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin-top: 20px;
+      background: white;
+    }
+    th, td {
+      border: 1px solid #ddd;
+      padding: 8px;
+      text-align: center;
+    }
+    th {
+      background-color: #333;
+      color: white;
+    }
+    button {
+      padding: 10px 15px;
+      margin-top: 10px;
+      cursor: pointer;
+    }
+  </style>
+</head>
+<body>
+
+<h2>Amazon Inventory Closing Stock Dashboard</h2>
+
+<input type="file" id="fileInput" accept=".csv" />
+<br>
+<button onclick="downloadCSV()">Download Result</button>
+
+<div id="dashboard"></div>
+
+<table id="outputTable">
+  <thead>
+    <tr>
+      <th>SKU Name</th>
+      <th>ASIN</th>
+      <th>Closing Stock</th>
+    </tr>
+  </thead>
+  <tbody></tbody>
+</table>
+
+<script>
+let finalData = [];
+
+document.getElementById('fileInput').addEventListener('change', function(event) {
+    const file = event.target.files[0];
+
+    Papa.parse(file, {
+        header: true,
+        skipEmptyLines: true,
+        complete: function(results) {
+            const data = results.data;
+
+            // STEP 1: Get latest date
+            const latestDate = data
+              .map(row => row["Date"])
+              .sort((a,b) => new Date(b) - new Date(a))[0];
+
+            // STEP 2: Filter latest date
+            const filtered = data.filter(row => row["Date"] === latestDate);
+
+            // STEP 3: Group by ASIN
+            const grouped = {};
+
+            filtered.forEach(row => {
+                const asin = row["ASIN"];
+                const sku = row["Product Name"] || "N/A";
+                const balance = parseFloat(row["Ending Warehouse Balance"]) || 0;
+
+                if (!grouped[asin]) {
+                    grouped[asin] = {
+                        sku: sku,
+                        asin: asin,
+                        stock: 0
+                    };
+                }
+
+                grouped[asin].stock += balance;
+            });
+
+            finalData = Object.values(grouped);
+
+            renderTable(finalData);
+            renderDashboard(finalData);
+        }
+    });
+});
+
+function renderTable(data) {
+    const tbody = document.querySelector("#outputTable tbody");
+    tbody.innerHTML = "";
+
+    data.forEach(row => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+            <td>${row.sku}</td>
+            <td>${row.asin}</td>
+            <td>${row.stock}</td>
+        `;
+        tbody.appendChild(tr);
+    });
+}
+
+function renderDashboard(data) {
+    const totalSKUs = data.length;
+    const totalStock = data.reduce((sum, item) => sum + item.stock, 0);
+
+    document.getElementById("dashboard").innerHTML = `
+        <div class="card">Total SKUs: <b>${totalSKUs}</b></div>
+        <div class="card">Total Stock: <b>${totalStock}</b></div>
+    `;
+}
+
+function downloadCSV() {
+    if (finalData.length === 0) {
+        alert("No data to download!");
+        return;
+    }
+
+    let csv = "SKU Name,ASIN,Closing Stock\n";
+
+    finalData.forEach(row => {
+        csv += `${row.sku},${row.asin},${row.stock}\n`;
+    });
+
+    const blob = new Blob([csv], { type: "text/csv" });
+    const url = window.URL.createObjectURL(blob);
+
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "closing_stock.csv";
+    a.click();
+}
+</script>
+
+</body>
+</html>
